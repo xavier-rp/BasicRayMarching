@@ -44,23 +44,32 @@ float sdCube(vec3 point, vec3 sidesHalfLengths)
 // Distance to the scene
 float map(vec3 p)
 {
-
+	
+	p.z += iTime * 0.8; // Forward movement
 	vec3 q = p;
 	mat2 rotationMatrix = rot2D(iTime);
-	q.xy *= rotationMatrix;
+	
+	q.y -= iTime * 0.2; // Add uniform vertical movement to the cubes
+	q = fract(q);
 
-	vec3 spherePos = vec3(1.0, 0.0, 0.0); // Sphere position
-	float sphereSD = sdSphere(p - spherePos, 0.1);	 // Sphere SDF
+	vec3 spherePos = vec3(0.5, 0.5, 0.5); // Sphere position
+	float sphereSD = sdSphere(q - spherePos, 0.03);	 // Sphere SDF
 
-	vec3 cubePos = vec3(2.0*cos(iTime), 2.0*sin(iTime), 0.0); // Cube position
-	cubePos.xy *= rotationMatrix;
-	cubePos = vec3(0.0, 0.0, 0.0);
+	q = fract(p);
+
+	q.xy *= rotationMatrix; //To only rotate the objet, the position of the ray has to be rotated as well as the position of the object
+
+	vec3 cubePos = vec3(cos(iTime), sin(iTime), 0.0); // Cube position
+	
+	cubePos = vec3(0.5 + cos(iTime)/5, 0.5 + sin(iTime)/5, 0.5);
+	cubePos.xy *= rotationMatrix; //To only rotate the objet, the position of the ray has to be rotated as well as the position of the object
 	float cubeSD = sdCube(q - cubePos, vec3(0.1));	// Cube SDF
 
-	float ground = p.y + 0.75; // Distance to the ground
+	//float ground = p.y + 0.75; // Distance to the ground
 
 	// Closest distance to the scene
-	return smin(ground, smin(sphereSD, cubeSD, 0.1), 0.1);
+	//return smin(ground, smin(sphereSD, cubeSD, 0.1), 0.1);
+	return smin(sphereSD, cubeSD, 0.1);
 }
 
 // Outputs colors in RGBA
@@ -106,10 +115,10 @@ void main()
 			break; // Early stop of the iteration if the ray is close enough
 		}
 
-		col = vec3(i)/float(80); // Color based on iteration
+		//col = vec3(i)/float(80); // Color based on iteration
 	}
 
-    col = vec3(t * 0.1); // Depth-buffer (color based on distance)
+    col = vec3(t * 0.07); // Depth-buffer (color based on distance)
 
 	FragColor = vec4(col, 1.0);
 }
