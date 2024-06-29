@@ -3,6 +3,7 @@
 // Uniforms
 uniform float iTime;
 uniform vec2  iResolution;
+uniform vec2  iMouse;
 
 // 2D rotation function
 mat2 rot2D(float angle) 
@@ -48,17 +49,18 @@ float map(vec3 p)
 	mat2 rotationMatrix = rot2D(iTime);
 	q.xy *= rotationMatrix;
 
-	vec3 spherePos = vec3(3.0*sin(iTime), 0.0, 3.0); // Sphere position
-	float sphereSD = sdSphere(p - spherePos, 0.5);	 // Sphere SDF
+	vec3 spherePos = vec3(1.0, 0.0, 0.0); // Sphere position
+	float sphereSD = sdSphere(p - spherePos, 0.1);	 // Sphere SDF
 
-	vec3 cubePos = vec3(2.0*cos(iTime), 2.0*sin(iTime), 3.0); // Cube position
+	vec3 cubePos = vec3(2.0*cos(iTime), 2.0*sin(iTime), 0.0); // Cube position
 	cubePos.xy *= rotationMatrix;
-	float cubeSD = sdCube(q - cubePos, vec3(0.5));	// Cube SDF
+	cubePos = vec3(0.0, 0.0, 0.0);
+	float cubeSD = sdCube(q - cubePos, vec3(0.1));	// Cube SDF
 
 	float ground = p.y + 0.75; // Distance to the ground
 
 	// Closest distance to the scene
-	return smin(ground, smin(sphereSD, cubeSD, 0.2), 0.1);
+	return smin(ground, smin(sphereSD, cubeSD, 0.1), 0.1);
 }
 
 // Outputs colors in RGBA
@@ -71,6 +73,8 @@ void main()
 	// and the center of the canvas is now (0, 0).
 	vec2 uv0 = gl_FragCoord.xy / iResolution.xy * 2.0 - 1.0;
 
+	vec2 mouseUV = iMouse.xy / iResolution.xy * 2.0 - 1.0;
+
 	// Scale the u coordinate so that its interval from -1 to 1 spans the same number of pixels as the y coordinate.
 	uv0.x *= iResolution.x / iResolution.y;
 	vec3 col = vec3(0.0);
@@ -79,6 +83,14 @@ void main()
 	vec3 rd = normalize(vec3(uv0, abs(ro.z)));  // ray direction for the give
 
 	float t = 0.0; // total distance travelled
+
+	// Vertical camera rotation
+	ro.yz *= rot2D(-mouseUV.y*3.14159);
+	rd.yz *= rot2D(-mouseUV.y*3.14159);
+
+	// Horizontal camera rotation
+	rd.xz *= rot2D(-mouseUV.x*3.14159);
+	ro.xz *= rot2D(-mouseUV.x*3.14159);
 
 	// Raymarching
 	for (int i = 0; i < 80; i++)
@@ -94,7 +106,7 @@ void main()
 			break; // Early stop of the iteration if the ray is close enough
 		}
 
-		//col = vec3(i)/float(80); // Color based on iteration
+		col = vec3(i)/float(80); // Color based on iteration
 	}
 
     col = vec3(t * 0.1); // Depth-buffer (color based on distance)

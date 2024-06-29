@@ -1,5 +1,6 @@
 #include <iostream>
 #include <chrono>
+#include <vector>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -86,9 +87,15 @@ int main()
 	VBO1.Unbind();
 	EBO1.Unbind();
 
+	double mouseXPos = width / 2.0;
+	double mouseYPos = height / 2.0;
 	// Gets ID of uniform called "iTime" and "iResolution"
 	GLuint timeUniformID = glGetUniformLocation(shaderProgram.ID, "iTime");
 	GLuint resolutionUniformID = glGetUniformLocation(shaderProgram.ID, "iResolution");
+	GLuint mousePositionUniformID = glGetUniformLocation(shaderProgram.ID, "iMouse");
+
+	shaderProgram.Activate();
+	glUniform2f(mousePositionUniformID, GLfloat(mouseXPos), GLfloat(float(height) - mouseYPos));
 
 	int framebufferWidth, framebufferHeight;
 	// Restart the GLFW timer and start main while loop 
@@ -115,6 +122,13 @@ int main()
 		glfwSwapBuffers(window);
 		// Take care of all GLFW events
 		glfwPollEvents();
+
+		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+		{
+			glfwGetCursorPos(window, &mouseXPos, &mouseYPos);
+			glUniform2f(mousePositionUniformID, GLfloat(mouseXPos), GLfloat(float(height) - mouseYPos)); //GLFW (0,0) is top-left, OpenGL is bottom-left		
+		}
+
 	}
 
 	// Delete all the objects we've created
