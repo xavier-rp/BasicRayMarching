@@ -18,6 +18,14 @@ float smin( float a, float b, float k )
     return min(a,b) - h*h*h*k*(1.0/6.0);
 }
 
+
+float opSmoothUnion( float d1, float d2, float k )
+{
+    float h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
+    return mix( d2, d1, h ) - k*h*(1.0-h);
+}
+
+
 // function to generate cycling color palettes
 // https://iquilezles.org/articles/palettes/
 // http://dev.thi.ng/gradients/
@@ -49,27 +57,27 @@ float map(vec3 p)
 	vec3 q = p;
 	mat2 rotationMatrix = rot2D(iTime);
 	
-	q.y -= iTime * 0.2; // Add uniform vertical movement to the cubes
+	q.y -= 0.4*sin(iTime*2) + 0.5; // Add uniform vertical movement to the cubes
 	q = fract(q);
 
 	vec3 spherePos = vec3(0.5, 0.5, 0.5); // Sphere position
-	float sphereSD = sdSphere(q - spherePos, 0.03);	 // Sphere SDF
+	float sphereSD = sdSphere(q - spherePos, 0.08);	 // Sphere SDF
 
 	q = fract(p);
 
-	q.xy *= rotationMatrix; //To only rotate the objet, the position of the ray has to be rotated as well as the position of the object
+	//q.xy *= rotationMatrix; //To only rotate the objet, the position of the ray has to be rotated as well as the position of the object
 
-	vec3 cubePos = vec3(cos(iTime), sin(iTime), 0.0); // Cube position
+	vec3 cubePos = vec3(0.5, 0.5, 0.5); // Cube position
 	
-	cubePos = vec3(0.5 + cos(iTime)/5, 0.5 + sin(iTime)/5, 0.5);
-	cubePos.xy *= rotationMatrix; //To only rotate the objet, the position of the ray has to be rotated as well as the position of the object
+	//cubePos = vec3(0.5 + cos(iTime)/5, 0.5 + sin(iTime)/5, 0.5);
+	//cubePos.xy *= rotationMatrix; //To only rotate the objet, the position of the ray has to be rotated as well as the position of the object
 	float cubeSD = sdCube(q - cubePos, vec3(0.1));	// Cube SDF
 
 	//float ground = p.y + 0.75; // Distance to the ground
 
 	// Closest distance to the scene
 	//return smin(ground, smin(sphereSD, cubeSD, 0.1), 0.1);
-	return smin(sphereSD, cubeSD, 0.1);
+	return opSmoothUnion(sphereSD, cubeSD, 0.1);
 }
 
 // Outputs colors in RGBA
