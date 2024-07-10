@@ -38,8 +38,8 @@ int main()
 	// Initialize GLFW
 	glfwInit();
 
-	int width = 800;
-	int height = 500;
+	int width = 1600;
+	int height = 900;
 
 	// Tell GLFW what version of OpenGL we are using 
 	// In this case we are using OpenGL 3.3

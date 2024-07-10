@@ -5,10 +5,26 @@ uniform float iTime;
 uniform vec2  iResolution;
 uniform vec2  iMouse;
 
+const float FOV = 1.0;
+const int   MAX_STEPS = 256;
+const float MAX_DIST = 500.0;
+const float EPSILON = 0.001;
+
+const float PI = 3.14159265;
+const float TAU = (2*PI);
+const float PHI = (sqrt(5)*0.5 + 0.5);
+
 // 2D rotation function
 mat2 rot2D(float angle) 
 {
     return mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+}
+
+// Rotate around a coordinate axis (i.e. in a plane perpendicular to that axis) by angle <a>.
+// Read like this: R(p.xz, a) rotates "x towards z".
+// This is fast if <a> is a compile-time constant and slower (but still practical) if not.
+void pR(inout vec2 p, float a) {
+	p = cos(a)*p + sin(a)*vec2(p.y, -p.x);
 }
 
 float smin( float a, float b, float k )
@@ -49,35 +65,157 @@ float sdCube(vec3 point, vec3 sidesHalfLengths)
 	return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
 }
 
-// Distance to the scene
-float map(vec3 p)
+vec2 fOpUnionID(vec2 res1, vec2 res2)
 {
+	return res1.x < res2.x ? res1 : res2;
+}
+
+float fPlane(vec3 p, vec3 n, float distanceFromOrigin) {
+	return dot(p, n) + distanceFromOrigin;
+}
+
+// Distance to the scene
+vec2 map(vec3 p)
+{
+
+	float sphereDist = length(p - vec3(0.0, 0.0, 0.0)) - 1.0;
+	float sphereID = 1.0;
+	vec2 sphere = vec2(sphereDist, sphereID);
+
+	float cubeDist = sdCube(p, vec3(3.0, 9.0, 4.0));
+	float cubeID = 3.0;
+	vec2 cube = vec2(cubeDist, cubeID);
+
+	float planeDist = fPlane(p, vec3(0.0, 1.0, 0.0), 14.0);
+	float planeID = 2.0;
+	vec2 plane = vec2(planeDist, planeID);
+
+	vec2 res = cube;
+	res = fOpUnionID(plane, res);
+	return res;
+
+}
+
+vec2 rayMarch(vec3 rayOrigin, vec3 rayDirection)
+{
+	vec3 rayPos;
+	vec2 distanceToObject;
+	float rayPropagation = 0.0;
+
+	for (int i = 0; i < MAX_STEPS; i++)
+	{
+		rayPos = rayOrigin + rayPropagation * rayDirection;
+
+		distanceToObject = map(rayPos);
+		rayPropagation += distanceToObject[0];
+
+		if (abs(distanceToObject[0]) < EPSILON || (rayPropagation > MAX_DIST))
+		{
+			break;
+		}
+	}
+	return vec2(rayPropagation, distanceToObject[1]);
+}
+
+vec3 getNormal(vec3 p)
+{
+	// The gradient of a scalar field is always perpendicular to the iso-lines or iso-surfaces 
+	// This computes the gradient using central difference. No division by 2h is done, because we normalize the vector
+	vec2 h = vec2(EPSILON, 0.0);
+	return normalize(vec3(map(p + h.xyy)[0] - map(p - h.xyy)[0], map(p + h.yxy)[0] - map(p-h.yxy)[0], map(p + h.yyx)[0] - map(p - h.yyx)[0]));
+}
+
+vec3 getLight(vec3 p, vec3 rayDirection, vec3 color)
+{
+	vec3 lightPos = vec3(20.0, 48.0, -30.0);
+	vec3 directionTowardsLight = normalize(lightPos - p);
+	vec3 N = getNormal(p);
+	vec3 V = -rayDirection;
+	vec3 R = reflect(-directionTowardsLight, N);
+
+	vec3 specColor = vec3(0.5);
+	vec3 specular = specColor * pow(clamp(dot(R, V), 0.0, 1.0), 10.0);
+	vec3 diffuse = color * clamp(dot(directionTowardsLight, N), 0.0, 1.0);
+	vec3 ambient = color * 0.05;
+
+	//shadows
+	float d = rayMarch(p + N * 0.02, directionTowardsLight).x;
+	if (d < length(lightPos - p))
+	{	
+		return ambient;//vec3(0.0);
+	}
+	return diffuse + ambient + specular;
+}
+
+vec3 getMaterial(vec3 p, float id)
+{
+	vec3 material;
+	switch (int(id)) 
+	{
+		case 1:
+		material = vec3(0.9, 0.0, 0.0); break;
+		case 2:
+		material = vec3(0.2 + 0.4 * mod(floor(p.x) + floor(p.z), 2.0)); break;
+		case 3:
+		material = vec3(0.7, 0.8, 0.9); break;
+	}
+
+	return material;
+}
+
+mat3 getCam(vec3 rayOrigin, vec3 lookAt)
+{
+	vec3 camForward = normalize(vec3(lookAt - rayOrigin));
+	vec3 camRight = normalize(cross(vec3(0, 1, 0), camForward));
+	vec3 camUp = cross(camForward, camRight);
+	return mat3(camRight, camUp, camForward);
+}
+
+void mouseControl(inout vec3 rayOrigin)
+{
+	vec2 m = iMouse / iResolution;
+	pR(rayOrigin.yz, m.y * PI * 0.5 - 0.5);
+	pR(rayOrigin.xz, m.x * TAU);
+}
+
+void render(inout vec3 col, vec2 uv)
+{
+	vec3 rayOrigin = vec3(0.0, 20.0, -10.0);
+	mouseControl(rayOrigin);
+	vec3 lookAt = vec3(0.0, 0.0, 0.0);
+	vec3 rayDirection = getCam(rayOrigin, lookAt) * normalize(vec3(uv, FOV));
+
+	//vec2 mouseUV = iMouse.xy / iResolution.xy * 2.0 - 1.0;
+
+	// Vertical camera rotation
+	//rayOrigin.yz *= rot2D(-mouseUV.y*3.14159);
+	//rayDirection.yz *= rot2D(-mouseUV.y*3.14159);
+
+	// Horizontal camera rotation
+	//rayDirection.xz *= rot2D(-mouseUV.x*3.14159);
+	//rayOrigin.xz *= rot2D(-mouseUV.x*3.14159);
+
+	vec2 object = rayMarch(rayOrigin, rayDirection);
+
+	vec3 background = vec3(0.5, 0.8, 0.9);
+
+	//vec3 col = vec3(0.0, 0.0, 0.0);
+	//col = vec3(object[0]/MAX_DIST);
+	if (object[0] < MAX_DIST)
+	{
+		vec3 p = rayOrigin + object[0] * rayDirection;
 	
-	p.z += iTime * 0.8; // Forward movement
-	vec3 q = p;
-	mat2 rotationMatrix = rot2D(iTime);
-	
-	q.y -= 0.4*sin(iTime*2) + 0.5; // Add uniform vertical movement to the cubes
-	q = fract(q);
+		vec3 material = getMaterial(p, object[1]);
+		col += getLight(p, rayDirection, material);
 
-	vec3 spherePos = vec3(0.5, 0.5, 0.5); // Sphere position
-	float sphereSD = sdSphere(q - spherePos, 0.08);	 // Sphere SDF
+		//fog
+		col = mix(col, background, 1.0 - exp(-0.00002 * object[0] * object[0]));
+	}
+	else
+	{
+		col += background - max(0.9 * rayDirection.y, 0.0);
+	}
 
-	q = fract(p);
-
-	//q.xy *= rotationMatrix; //To only rotate the objet, the position of the ray has to be rotated as well as the position of the object
-
-	vec3 cubePos = vec3(0.5, 0.5, 0.5); // Cube position
-	
-	//cubePos = vec3(0.5 + cos(iTime)/5, 0.5 + sin(iTime)/5, 0.5);
-	//cubePos.xy *= rotationMatrix; //To only rotate the objet, the position of the ray has to be rotated as well as the position of the object
-	float cubeSD = sdCube(q - cubePos, vec3(0.1));	// Cube SDF
-
-	//float ground = p.y + 0.75; // Distance to the ground
-
-	// Closest distance to the scene
-	//return smin(ground, smin(sphereSD, cubeSD, 0.1), 0.1);
-	return opSmoothUnion(sphereSD, cubeSD, 0.1);
 }
 
 // Outputs colors in RGBA
@@ -88,45 +226,20 @@ void main()
 	// uv coordinates originally go from 0 to 1.
 	// with the following operations, we transform the coordinates so they go from -1 to 1
 	// and the center of the canvas is now (0, 0).
-	vec2 uv0 = gl_FragCoord.xy / iResolution.xy * 2.0 - 1.0;
-
-	vec2 mouseUV = iMouse.xy / iResolution.xy * 2.0 - 1.0;
+	vec2 uv = gl_FragCoord.xy / iResolution.xy * 2.0 - 1.0;
 
 	// Scale the u coordinate so that its interval from -1 to 1 spans the same number of pixels as the y coordinate.
-	uv0.x *= iResolution.x / iResolution.y;
-	vec3 col = vec3(0.0);
+	uv.x *= iResolution.x / iResolution.y;
 
-	vec3 ro = vec3(0, 0, -3); // ray origin
-	vec3 rd = normalize(vec3(uv0, abs(ro.z)));  // ray direction for the give
+	vec3 col = vec3(0.0, 0.0, 0.0);
+	
+	render(col, uv);
 
-	float t = 0.0; // total distance travelled
+	//col = vec3(i)/float(80); // Color based on iteration
+    //col = vec3(t * 0.07); // Depth-buffer (color based on distance)
 
-	// Vertical camera rotation
-	ro.yz *= rot2D(-mouseUV.y*3.14159);
-	rd.yz *= rot2D(-mouseUV.y*3.14159);
-
-	// Horizontal camera rotation
-	rd.xz *= rot2D(-mouseUV.x*3.14159);
-	ro.xz *= rot2D(-mouseUV.x*3.14159);
-
-	// Raymarching
-	for (int i = 0; i < 80; i++)
-	{
-		vec3 p = ro + rd * t; // Position of the end of the ray
-
-		float d = map(p);	  // Current distance to the closest object
-
-		t += d;				  // Accumulate the distance
-
-		if (d < 0.001 || t > 100.)
-		{
-			break; // Early stop of the iteration if the ray is close enough
-		}
-
-		//col = vec3(i)/float(80); // Color based on iteration
-	}
-
-    col = vec3(t * 0.07); // Depth-buffer (color based on distance)
+	// gamma correction
+	col = pow(col, vec3(0.4545));
 
 	FragColor = vec4(col, 1.0);
 }
