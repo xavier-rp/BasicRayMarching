@@ -147,6 +147,7 @@
   <ItemGroup>
     <None Include="default.frag" />
     <None Include="default.vert" />
+    <None Include="hg_sdf.glsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="EBO.h" />

@@ -1,4 +1,4 @@
-#version 330 core
+//#version 330 core
 
 // Uniforms
 uniform float iTime;
@@ -10,10 +10,6 @@ const int   MAX_STEPS = 256;
 const float MAX_DIST = 500.0;
 const float EPSILON = 0.001;
 
-const float PI = 3.14159265;
-const float TAU = (2*PI);
-const float PHI = (sqrt(5)*0.5 + 0.5);
-
 // 2D rotation function
 mat2 rot2D(float angle) 
 {
@@ -23,9 +19,6 @@ mat2 rot2D(float angle)
 // Rotate around a coordinate axis (i.e. in a plane perpendicular to that axis) by angle <a>.
 // Read like this: R(p.xz, a) rotates "x towards z".
 // This is fast if <a> is a compile-time constant and slower (but still practical) if not.
-void pR(inout vec2 p, float a) {
-	p = cos(a)*p + sin(a)*vec2(p.y, -p.x);
-}
 
 float smin( float a, float b, float k )
 {
@@ -59,6 +52,12 @@ float sdSphere(vec3 point, float radius)
 	return length(point) - radius;
 }
 
+float fDisplace(vec3 p)
+{
+	pR(p.yz, sin(2.0 *iTime));
+	return (sin(p.x + 4.0*iTime) * sin(p.y + sin(2.0 * iTime)) * sin(p.z + 6.0 * iTime));
+}
+
 float sdCube(vec3 point, vec3 sidesHalfLengths)
 {
 	vec3 q = abs(point) - sidesHalfLengths;
@@ -70,28 +69,76 @@ vec2 fOpUnionID(vec2 res1, vec2 res2)
 	return res1.x < res2.x ? res1 : res2;
 }
 
-float fPlane(vec3 p, vec3 n, float distanceFromOrigin) {
-	return dot(p, n) + distanceFromOrigin;
+vec2 fOpDifferenceID(vec2 res1, vec2 res2)
+{
+	return (res1.x > -res2.x) ? res1 : vec2(-res2.x, res2.y);
 }
+
+vec2 fOpDifferenceColumnsID(vec2 res1, vec2 res2, float r, float n)
+{
+	float dist = fOpDifferenceColumns(res1.x, res2.x, r, n);
+	return (res1.x > - res2.x) ? vec2(dist, res1.y) : vec2(dist, res2.y);
+}
+
+vec2 fOpUnionStairsID(vec2 res1, vec2 res2, float r, float n)
+{
+	float dist = fOpUnionStairs(res1.x, res2.x, r, n);
+	return (res1.x < res2.x) ? vec2(dist, res1.y) : vec2(dist, res2.y);
+}
+
+vec2 fOpUnionChamferID(vec2 res1, vec2 res2, float r)
+{
+	float dist = fOpUnionChamfer(res1.x, res2.x, r);
+	return (res1.x < res2.x) ? vec2(dist, res1.y) : vec2(dist, res2.y);
+}
+
 
 // Distance to the scene
 vec2 map(vec3 p)
 {
 
-	float sphereDist = length(p - vec3(0.0, 0.0, 0.0)) - 1.0;
+	float planeDist = fPlane(p, vec3(0.0, 1.0, 0.0), 14.0);
+	float planeID = 2.0;
+	vec2 plane = vec2(planeDist, planeID);
+
+	float sphereDist = length(p - vec3(0.0, 0.0, 0.0)) - (9.0 + fDisplace(p));
 	float sphereID = 1.0;
 	vec2 sphere = vec2(sphereDist, sphereID);
+
+	pMirrorOctant(p.xz, vec2(50, 50));
+	p.x = -abs(p.x) +20;
+	pMod1(p.z, 15);
+
+	//roof
+	vec3 pr = p;
+	pr.y -= 15.0;
+	pR(pr.xy, 0.6);
+	pr.x -= 18.0;
+	float roofDist = fBox2(pr.xy, vec2(20, 0.3));
+	float roofID = 4.0;
+	vec2 roof = vec2(roofDist, roofID);
 
 	float cubeDist = sdCube(p, vec3(3.0, 9.0, 4.0));
 	float cubeID = 3.0;
 	vec2 cube = vec2(cubeDist, cubeID);
 
-	float planeDist = fPlane(p, vec3(0.0, 1.0, 0.0), 14.0);
-	float planeID = 2.0;
-	vec2 plane = vec2(planeDist, planeID);
+	vec3 pc = p;
+	pc.y -= 9.0;
+	float cylinderDist = fCylinder(pc.yxz, 4, 3);
+	float cylinderID = 3.0;
+	vec2 cylinder = vec2(cylinderDist, cylinderID);
 
-	vec2 res = cube;
-	res = fOpUnionID(plane, res);
+	// wall
+	float wallDist = fBox2(p.xy, vec2(1, 15));
+	float wallID = 3.0;
+	vec2 wall = vec2(wallDist, wallID);
+
+	vec2 res;
+	res = fOpUnionID(cube, cylinder);
+	res = fOpDifferenceColumnsID(wall, res, 0.6, 3.0);
+	res = fOpUnionChamferID(res, roof, 0.9);
+	res = fOpUnionStairsID(res, plane, 4.0, 5.0);
+	res = fOpUnionID(res, sphere);
 	return res;
 
 }
@@ -137,14 +184,15 @@ vec3 getLight(vec3 p, vec3 rayDirection, vec3 color)
 	vec3 specular = specColor * pow(clamp(dot(R, V), 0.0, 1.0), 10.0);
 	vec3 diffuse = color * clamp(dot(directionTowardsLight, N), 0.0, 1.0);
 	vec3 ambient = color * 0.05;
+	vec3 fresnel = 0.25 * color * pow(1.0 + dot(rayDirection, N), 3.0);
 
 	//shadows
 	float d = rayMarch(p + N * 0.02, directionTowardsLight).x;
 	if (d < length(lightPos - p))
 	{	
-		return ambient;//vec3(0.0);
+		return ambient; //+ fresnel;//vec3(0.0);
 	}
-	return diffuse + ambient + specular;
+	return diffuse + ambient + specular; //+ fresnel;
 }
 
 vec3 getMaterial(vec3 p, float id)
@@ -158,6 +206,9 @@ vec3 getMaterial(vec3 p, float id)
 		material = vec3(0.2 + 0.4 * mod(floor(p.x) + floor(p.z), 2.0)); break;
 		case 3:
 		material = vec3(0.7, 0.8, 0.9); break;
+		case 4:
+		vec2 i = step(fract(0.5 * p.xz), vec2(1.0 / 10.0)); 
+		material = ((1.0 - i.x) * 1.0 - i.y) * vec3(0.37, 0.12, 0.0); break;
 	}
 
 	return material;
