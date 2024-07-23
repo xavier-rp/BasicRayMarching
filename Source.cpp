@@ -67,7 +67,7 @@ int main()
 	gladLoadGL();
 
 	// Generates Shader object using shaders defualt.vert and default.frag
-	Shader shaderProgram("default.vert", "default.frag");
+	Shader shaderProgram("default.vert", "default.frag", "hg_sdf.glsl");
 
 	// Generates Vertex Array Object and binds it
 	VAO VAO1;
