@@ -229,8 +229,9 @@ void mouseControl(inout vec3 rayOrigin)
 	pR(rayOrigin.xz, m.x * TAU);
 }
 
-void render(inout vec3 col, vec2 uv)
+vec3 render(vec2 uv)
 {
+	vec3 col = vec3(0.0);
 	vec3 rayOrigin = vec3(0.0, 20.0, -10.0);
 	mouseControl(rayOrigin);
 	vec3 lookAt = vec3(0.0, 0.0, 0.0);
@@ -267,6 +268,20 @@ void render(inout vec3 col, vec2 uv)
 		col += background - max(0.9 * rayDirection.y, 0.0);
 	}
 
+	return col;
+}
+
+vec2 getUV(vec2 offset)
+{
+	return (2.0 * (gl_FragCoord.xy + offset) - iResolution.xy) / iResolution.y;
+}
+
+// Rotated Grid SuperSampling (RGSS) is a SuperSample Anti-Aliasing technique
+vec3 renderAAx4()
+{	
+	vec4 e = vec4(0.125, -0.125, 0.375, -0.375);
+	vec3 colAA = render(getUV(e.xz)) + render(getUV(e.yw)) + render(getUV(e.wx)) + render(getUV(e.zy));
+	return colAA /= 4.0;
 }
 
 // Outputs colors in RGBA
@@ -282,9 +297,10 @@ void main()
 	// Scale the u coordinate so that its interval from -1 to 1 spans the same number of pixels as the y coordinate.
 	uv.x *= iResolution.x / iResolution.y;
 
-	vec3 col = vec3(0.0, 0.0, 0.0);
+	//vec3 col = render(uv);
+	vec3 col = renderAAx4();
 	
-	render(col, uv);
+	
 
 	//col = vec3(i)/float(80); // Color based on iteration
     //col = vec3(t * 0.07); // Depth-buffer (color based on distance)
