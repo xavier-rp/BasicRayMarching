@@ -172,6 +172,26 @@ vec3 getNormal(vec3 p)
 	return normalize(vec3(map(p + h.xyy)[0] - map(p - h.xyy)[0], map(p + h.yxy)[0] - map(p-h.yxy)[0], map(p + h.yyx)[0] - map(p - h.yyx)[0]));
 }
 
+float getSoftShadow(vec3 rayPos, vec3 lightPos)
+{
+	float res = 1.0;
+	float dist = 0.01;
+	float lightSize = 0.03;
+	
+	for (int i = 0; i < MAX_STEPS; i++)
+	{
+		float distanceToObject = map(rayPos + lightPos * dist).x;
+		res = min(res, distanceToObject / (dist * lightSize));
+		dist += distanceToObject;
+		
+		if (distanceToObject < 0.0001 || dist > 60.0)
+		{
+			break;
+		}
+	}
+	return clamp(res, 0.0, 1.0);
+}
+
 vec3 getLight(vec3 p, vec3 rayDirection, vec3 color)
 {
 	vec3 lightPos = vec3(20.0, 48.0, -30.0);
@@ -187,12 +207,18 @@ vec3 getLight(vec3 p, vec3 rayDirection, vec3 color)
 	vec3 fresnel = 0.25 * color * pow(1.0 + dot(rayDirection, N), 3.0);
 
 	//shadows
+	/*
 	float d = rayMarch(p + N * 0.02, directionTowardsLight).x;
 	if (d < length(lightPos - p))
 	{	
 		return ambient; //+ fresnel;//vec3(0.0);
 	}
 	return diffuse + ambient + specular; //+ fresnel;
+	*/
+
+	float shadow = getSoftShadow(p + N * 0.02, normalize(lightPos));
+
+	return ambient + fresnel + (specular + diffuse) * shadow;
 }
 
 vec3 getMaterial(vec3 p, float id)
